@@ -1,23 +1,19 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
 import { SQSHandler } from "aws-lambda";
-// import { sharp } from "/opt/nodejs/sharp-utils";
-import {
-  GetObjectCommand,
-  PutObjectCommandInput,
-  GetObjectCommandInput,
-  S3Client,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
+import {S3Client} from "@aws-sdk/client-s3";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 
+const ddbDocClient = createDDbDocClient();
 const s3 = new S3Client();
 
 export const handler: SQSHandler = async (event) => {
   console.log("Event ", event);
   for (const record of event.Records) {
-    const recordBody = JSON.parse(record.body);
-    console.log('Raw SNS message ',JSON.stringify(recordBody))
-    if (recordBody.Records) {
-      for (const messageRecord of recordBody.Records) {
+   const recordMessage = JSON.parse(JSON.parse(record.body).Message);
+   console.log('Raw SNS message ', JSON.stringify(recordMessage))
+    if (recordMessage.Records) {
+      for (const messageRecord of recordMessage.Records) {
         const s3e = messageRecord.s3;
         const srcBucket = s3e.bucket.name;
         // Object key may have spaces or unicode non-ASCII characters.
@@ -31,11 +27,34 @@ export const handler: SQSHandler = async (event) => {
         // Check that the image type is supported
         const imageType = typeMatch[1].toLowerCase();
         if (imageType != "jpeg" && imageType != "png") {
-          console.log(`Unsupported image type: ${imageType}`);
-          throw new Error("Unsupported image type: ${imageType. ");
-        }
-        // process image upload 
+          console.log("Unsupported image type: ${imageType}");
+          throw new Error('Unsupported image type: ${imageType.');
+        } 
+        console.log("Uploading image ${srcKey} to ${srcBucket}") 
+        const putCommand = new PutCommand({
+          TableName: "Images",
+          Item: {
+            ImageName: srcKey,
+          },
+        });
+
+        await ddbDocClient.send(putCommand);
+        console.log("Processed image ${srcKey} and entered to table")
       }
     }
   }
 };
+
+function createDDbDocClient() {
+  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+  const marshallOptions = {
+    convertEmptyValues: true,
+    removeUndefinedValues: true,
+    convertClassInstanceToMap: true,
+  };
+  const unmarshallOptions = {
+    wrapNumbers: false,
+  };
+  const translateConfig = { marshallOptions, unmarshallOptions };
+  return DynamoDBDocumentClient.from(ddbClient, translateConfig);
+}
