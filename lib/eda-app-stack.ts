@@ -71,6 +71,8 @@ export class EDAAppStack extends cdk.Stack {
     new subs.SqsSubscription(imageProcessQueue)
   );
 
+ 
+
   const processImageFn = new lambdanode.NodejsFunction(
     this,
     "ProcessImageFn",
@@ -84,10 +86,26 @@ export class EDAAppStack extends cdk.Stack {
     }
   );
 
+  const processDeleteFn = new lambdanode.NodejsFunction(this, "process-delete-function", {
+    runtime: lambda.Runtime.NODEJS_18_X,
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(3),
+    entry: `${__dirname}/../lambdas/processDelete.ts`,
+  });
+
+  newImageTopic.addSubscription(
+    new subs.LambdaSubscription(processDeleteFn)
+  );
+
   // Event triggers
   imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
       new s3n.SnsDestination(newImageTopic)
+  );
+
+  imagesBucket.addEventNotification(
+    s3.EventType.OBJECT_REMOVED,
+    new s3n.SnsDestination(newImageTopic)
   );
 
   const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
