@@ -97,6 +97,24 @@ export class EDAAppStack extends cdk.Stack {
     new subs.LambdaSubscription(processDeleteFn)
   );
 
+  const processUpdateFn = new lambdanode.NodejsFunction(this, "process-update-function", {
+    runtime: lambda.Runtime.NODEJS_18_X,
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(3),
+    entry: `${__dirname}/../lambdas/processUpdate.ts`,
+  });
+  
+  newImageTopic.addSubscription(
+    new subs.LambdaSubscription(processUpdateFn, {
+      filterPolicy: {
+        'comment_type': 
+        sns.SubscriptionFilter.stringFilter({
+          allowlist: ["Caption"]
+      })
+    }
+  }
+));
+
   // Event triggers
   imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
@@ -123,9 +141,12 @@ export class EDAAppStack extends cdk.Stack {
 
   rejectionMailerFn.addEventSource(newRejectionEventSource);
 
+  
   // Permissions
   imagesBucket.grantRead(processImageFn);
   imagesTable.grantReadWriteData(processImageFn);
+  imagesTable.grantReadWriteData(processDeleteFn);
+  imagesTable.grantReadWriteData(processUpdateFn);
 
     confirmationMailerFn.addToRolePolicy(
       new iam.PolicyStatement({
